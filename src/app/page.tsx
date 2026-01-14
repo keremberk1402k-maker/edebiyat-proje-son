@@ -568,17 +568,35 @@ export default function Game() {
                             {shopMode==='sell' && player!.inventory.map((it,i)=>(<div key={i} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', textAlign:'center', color:'white'}}><div style={{fontSize:'40px'}}>{it.icon}</div><h3 style={{fontSize:'20px'}}>{it.name}</h3><button style={{...btnStyle, width:'100%', background:'#ffcc00', color:'black', justifyContent:'center'}} onClick={()=>sellItem(i)}>SAT ({it.cost/2})</button></div>))}
                         </div>
                     )}
+                    
+                    {/* DÖNGÜSÜZ, ELLE YAZILMIŞ, GARANTİ ÇANTA SİSTEMİ */}
                     {screen==='inv' && (
                         <div style={{display:'flex', flexDirection: device==='mobile'?'column':'row', gap:'40px'}}>
                             <div style={{width: device==='mobile'?'100%':'300px'}}>
                                 <h3 style={{color:'#00eaff', textAlign:'center'}}>KUŞANILANLAR</h3>
                                 <div style={{display:'flex', gap:'10px', justifyContent:'center'}}>
-                                {['wep','arm','acc'].map(t=>(<div key={t} onClick={()=>{unequipItem(t as any)}} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', cursor:'pointer', background:player!.equipped[t as any]?'#1a1a20':'transparent', color:'white'}}>{player!.equipped[t as any]?player!.equipped[t as any]!.icon:t[0].toUpperCase()}</div>))}
+                                    
+                                    {/* SİLAH SLOTU */}
+                                    <div onClick={() => unequipItem('wep')} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', cursor:'pointer', background: player?.equipped.wep ? '#1a1a20' : 'transparent', color:'white'}}>
+                                        {player?.equipped.wep ? player.equipped.wep.icon : 'W'}
+                                    </div>
+
+                                    {/* ZIRH SLOTU */}
+                                    <div onClick={() => unequipItem('arm')} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', cursor:'pointer', background: player?.equipped.arm ? '#1a1a20' : 'transparent', color:'white'}}>
+                                        {player?.equipped.arm ? player.equipped.arm.icon : 'A'}
+                                    </div>
+
+                                    {/* AKSESUAR SLOTU */}
+                                    <div onClick={() => unequipItem('acc')} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', cursor:'pointer', background: player?.equipped.acc ? '#1a1a20' : 'transparent', color:'white'}}>
+                                        {player?.equipped.acc ? player.equipped.acc.icon : 'C'}
+                                    </div>
+
                                 </div>
                             </div>
                             <div style={{flex:1, display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px', alignContent:'start'}}>{player!.inventory.map((it,i)=>(<div key={i} style={{background:'#222', border:'2px solid #555', padding:'10px', borderRadius:'10px', textAlign:'center', color:'white'}}><div style={{fontSize:'30px'}}>{it.icon}</div><div style={{fontSize:'14px', color:'#aaa'}}>+{it.val} Güç</div><button style={{...btnStyle, width:'100%', marginTop:'5px', fontSize:'12px', padding:'5px', justifyContent:'center'}} onClick={()=>equipItem(i)}>KUŞAN</button></div>))}</div>
                         </div>
                     )}
+
                     {screen === 'lib' && (
                         <div style={{display:'grid', gap:'20px', gridTemplateColumns: device==='mobile'?'1fr':'1fr 1fr'}}>
                             {libraryDB.map((l, i) => (<div key={i} style={{background:'#1a1a20', borderLeft:'6px solid #00eaff', padding:'20px', borderRadius:'0 20px 20px 0', color:'white'}}><h3 style={{color:'#ffcc00', fontSize:'24px', margin:'0 0 10px 0'}}>{l.t}</h3><p style={{fontSize:'18px', lineHeight:'1.5'}}>{l.c}</p></div>))}

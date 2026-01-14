@@ -2,16 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { ref, set, onValue, update, push, get, remove } from "firebase/database";
+import { ref, set, onValue, update, push, get, remove, query, orderByChild, limitToLast } from "firebase/database";
 import { Player, itemDB, costumeDB, regions, qPool, libraryDB, Question, Region, Level } from '../lib/gameData';
 
 const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 850;
 const FALLBACK_ARENA_BG = "https://images.unsplash.com/photo-1516912481808-3406841bd33c?q=80&w=1000";
 
-const botNames = ["Kitap_Kurdu", "Edebiyat_Avcısı", "Şiir_Üstadı", "Kalemşör", "Soru_Canavarı"];
-
-// Helper function outside
+// Helper function
 const calcStats = (p: Player | null) => {
     if (!p) return { atk: 0, maxHp: 100 };
     let atk = p.baseAtk + (p.lvl * 5);
@@ -62,10 +60,9 @@ export default function Game() {
   });
 
   const [shopMode, setShopMode] = useState<'buy' | 'joker' | 'sell'>('buy');
-  const [arenaBots, setArenaBots] = useState<{n:string, s:number}[]>([]);
+  const [leaderboard, setLeaderboard] = useState<{name:string, score:number}[]>([]);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- YARDIMCI FONKSİYONLAR ---
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
       setNotification({ msg, type });
       setTimeout(() => setNotification(null), 3000);
@@ -110,6 +107,25 @@ export default function Game() {
     return () => clearInterval(interval);
   }, [screen, battle.active, battle.timer, turn, playerSide, roomID]);
 
+  // --- GLOBAL LİDERLİK TABLOSUNU ÇEK ---
+  const fetchLeaderboard = () => {
+      const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(50));
+      get(usersRef).then((snapshot) => {
+          if (snapshot.exists()) {
+              const data = snapshot.val();
+              const list = Object.values(data) as {name:string, score:number}[];
+              list.sort((a, b) => b.score - a.score);
+              setLeaderboard(list);
+          }
+      });
+  };
+
+  useEffect(() => {
+      if(screen === 'arena') {
+          fetchLeaderboard();
+      }
+  }, [screen]);
+
   // --- STİLLER ---
   const containerStyle = device === 'pc' 
     ? { width: BASE_WIDTH, height: BASE_HEIGHT, transform: `scale(${scale})`, transformOrigin: 'center', background: '#111', border: '4px solid #00eaff', borderRadius: '20px', boxShadow: '0 0 100px rgba(0,0,0,0.8)', overflow: 'hidden', position: 'relative' as 'relative', display: 'flex', flexDirection: 'column' as 'column', color: 'white' } 
@@ -130,21 +146,30 @@ export default function Game() {
 
   const handleAuth = () => {
     if (!authName || !authPass) return notify("Boş alan bırakma!", "error");
+    const key = `edb_final_v21_${authName}`;
     
+    // Admin hesapları
     if (authName === "admin" && authPass === "1234") {
         const admin: Player = { name: "ADMIN", pass: "1234", hp: 9999, maxHp: 9999, gold: 99999, xp: 0, maxXp: 100, lvl: 99, baseAtk: 999, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':99,'heal':99,'skip':99,'time':99}, mistakes: [], score: 9999, unlockedRegions: ['tut','r1','r2','r3','r4'], regionProgress: {'tut':2,'r1':4,'r2':4,'r3':4,'r4':3}, unlockedCostumes: Object.keys(costumeDB), currentCostume: 'default', tutorialSeen: true };
-        setPlayer(admin); setScreen('menu'); return;
+        setPlayer(admin); 
+        update(ref(db, 'users/' + authName), { name: authName, score: 9999 });
+        setScreen('menu'); return;
     }
     if (authName === "admin2" && authPass === "1234") {
         const admin2: Player = { name: "ADMIN_2", pass: "1234", hp: 9999, maxHp: 9999, gold: 99999, xp: 0, maxXp: 100, lvl: 99, baseAtk: 999, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':99,'heal':99,'skip':99,'time':99}, mistakes: [], score: 9999, unlockedRegions: ['tut','r1','r2','r3','r4'], regionProgress: {'tut':2,'r1':4,'r2':4,'r3':4,'r4':3}, unlockedCostumes: Object.keys(costumeDB), currentCostume: 'default', tutorialSeen: true };
-        setPlayer(admin2); setScreen('menu'); return;
+        setPlayer(admin2); 
+        update(ref(db, 'users/' + authName), { name: authName, score: 9999 });
+        setScreen('menu'); return;
     }
 
-    const key = `edb_final_v20_${authName}`; 
     if (isRegister) {
       if (localStorage.getItem(key)) return notify("Bu isim dolu!", "error");
       const newP: Player = { name: authName, pass: authPass, hp: 100, maxHp: 100, gold: 0, xp: 0, maxXp: 100, lvl: 1, baseAtk: 20, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':1,'heal':1,'skip':1,'time':1}, mistakes: [], score: 0, unlockedRegions: ['tut'], regionProgress: {'tut': 0}, unlockedCostumes: ['default'], currentCostume: 'default', tutorialSeen: false };
-      localStorage.setItem(key, JSON.stringify(newP)); setIsRegister(false); notify("Kayıt Başarılı!", "success");
+      
+      localStorage.setItem(key, JSON.stringify(newP));
+      update(ref(db, 'users/' + authName), { name: authName, score: 0 });
+
+      setIsRegister(false); notify("Kayıt Başarılı!", "success");
     } else {
       const d = localStorage.getItem(key);
       if (!d) return notify("Kayıt bulunamadı!", "error");
@@ -152,16 +177,21 @@ export default function Game() {
       if (p.pass !== authPass) return notify("Şifre yanlış!", "error");
       if(!p.unlockedRegions) p.unlockedRegions = ['tut'];
       if(!p.regionProgress) p.regionProgress = {'tut':0};
+      
+      update(ref(db, 'users/' + authName), { name: authName, score: p.score });
+
       setPlayer(p); setScreen('menu'); if(!p.tutorialSeen) setShowTutorial(true);
     }
   };
 
   const saveGame = (p: Player) => {
-    if(p.name !== "ADMIN" && p.name !== "ADMIN_2") localStorage.setItem(`edb_final_v20_${p.name}`, JSON.stringify(p));
+    if(p.name !== "ADMIN" && p.name !== "ADMIN_2") {
+        localStorage.setItem(`edb_final_v21_${p.name}`, JSON.stringify(p));
+        update(ref(db, 'users/' + p.name), { score: p.score });
+    }
     setPlayer({...p});
   };
 
-  // --- ODAYI DİNLE ---
   const listenToRoom = (rId: string, side: 'p1' | 'p2') => {
       const roomRef = ref(db, `arena_rooms/${rId}`);
       onValue(roomRef, (snapshot) => {
@@ -252,11 +282,9 @@ export default function Game() {
     if (!player) return;
     let nb = { ...battle };
 
-    // --- ONLINE MOD (Tıklama Efekti Eklendi) ---
     if (nb.isArena && roomID && playerSide) {
         if (turn !== playerSide) return;
         
-        // GÖRSEL TEPKİ (YENİ EKLENDİ)
         const myDmg = calcStats(player).atk;
         if (correct) {
             setBattle(prev => ({...prev, dmgText: { val: myDmg, color: '#00ff66', id: Date.now() } }));
@@ -274,7 +302,6 @@ export default function Game() {
         update(ref(db), updates); return;
     }
 
-    // --- OFFLINE MOD ---
     const np = { ...player };
     if (correct) {
       nb.combo++; const stats = calcStats(np); let dmg = stats.atk; if (nb.combo > 2) dmg *= 1.5; dmg = Math.floor(dmg);
@@ -349,7 +376,23 @@ export default function Game() {
   };
 
   const buyItem = (id:string) => { const it=itemDB[id]; if(player!.gold>=it.cost){let np={...player!}; np.gold-=it.cost; if(it.type==='joker') np.jokers[it.jokerId!]=(np.jokers[it.jokerId!]||0)+1; else np.inventory.push({...it, uid:Date.now()}); saveGame(np); notify("Satın Alındı!", "success");}else notify("Para Yetersiz!", "error"); };
-  const equipItem = (idx:number) => { if(!player)return; const np={...player}; const it=np.inventory[idx]; if(np.equipped[it.type]) np.inventory.push(np.equipped[it.type]!); np.equipped[it.type]=it; np.inventory.splice(idx,1); saveGame(np); notify("Kuşanıldı", "success"); };
+  
+  // DÜZELTİLMİŞ EQUIP FUNCTION
+  const equipItem = (idx:number) => { 
+      if(!player) return; 
+      const np={...player}; 
+      const it=np.inventory[idx]; 
+
+      if (it.type === 'joker') return notify("Jokerler kuşanılamaz!", "error");
+      
+      const type = it.type as 'wep' | 'arm' | 'acc';
+      if(np.equipped[type]) np.inventory.push(np.equipped[type]!); 
+      np.equipped[type]=it; 
+      np.inventory.splice(idx,1); 
+      saveGame(np); 
+      notify("Kuşanıldı", "success"); 
+  };
+
   const unequipItem = (type: 'wep' | 'arm' | 'acc') => { if(!player || !player.equipped[type]) return; const np = { ...player }; np.inventory.push(np.equipped[type]!); np.equipped[type] = null; saveGame(np); notify("Çıkarıldı", "success"); };
   const useJoker = (type: string) => { 
       if(!player || battle.timer<=0 || (player.jokers[type]||0)<=0) return; 
@@ -478,6 +521,8 @@ export default function Game() {
                         <div style={{display:'flex', flexDirection:'column', alignItems:'center', width:'100%', order: device==='mobile'?1:3}}>
                             <div style={{background:'black', border:'2px solid white', borderRadius:'15px', height:'20px', width: device==='mobile'?'120px':'220px', marginBottom:'5px', overflow:'hidden', position:'relative'}}><div style={{width:`${(battle.enemyHp/battle.maxEnemyHp)*100}%`, height:'100%', background:'#ff0055', transition:'0.3s'}}></div><span style={{position:'absolute', inset:0, textAlign:'center', fontSize:'12px', fontWeight:'bold'}}>{Math.floor(battle.enemyHp)}</span></div>
                             <div style={{fontSize: device==='mobile'?'80px':'170px', filter:'drop-shadow(0 0 20px black)', lineHeight:'1'}}>{battle.isArena ? '🤺' : battle.level?.ico}</div>
+                            {/* RAKİP İSMİ */}
+                            <div style={{background:'rgba(0,0,0,0.7)', padding:'5px 15px', borderRadius:'10px', marginTop:'5px', color:'#ffcc00', fontWeight:'bold', fontSize:'24px'}}>{battle.level?.en}</div>
                         </div>
                         <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', order: 2, paddingBottom: device==='mobile'?'0':'50px'}}>
                             {device === 'pc' && !battle.isArena && (<div style={{display:'flex', gap:'25px', marginBottom:'10px', justifyContent:'center'}}>{[{id:'5050',i:'½'},{id:'heal',i:'❤️'},{id:'time',i:'⏳'},{id:'skip',i:'⏩'}].map(j=>(<button key={j.id} onClick={()=>useJoker(j.id)} style={{width:'90px', height:'90px', borderRadius:'50%', fontSize:'45px', background:'#222', border:'3px solid #666', cursor:'pointer', position:'relative', color:'white', display:'flex', alignItems:'center', justifyContent:'center'}}>{j.i}<span style={{position:'absolute', bottom:-5, right:-5, background:'red', borderRadius:'50%', width:'30px', height:'30px', fontSize:'16px', lineHeight:'30px', color:'white', border:'2px solid white'}}>{player!.jokers[j.id]||0}</span></button>))}</div>)}
@@ -486,6 +531,7 @@ export default function Game() {
                         <div style={{display:'flex', flexDirection:'column', alignItems:'center', width:'100%', animation: battle.shaking ? 'shake 0.3s' : '', order: device==='mobile'?3:1}}>
                             <div style={{fontSize: device==='mobile'?'80px':'170px', filter:'drop-shadow(0 0 20px black)', lineHeight:'1'}}>{costumeDB[player!.currentCostume].icon}</div>
                             <div style={{background:'black', border:'2px solid white', borderRadius:'15px', height:'20px', width: device==='mobile'?'120px':'220px', marginTop:'5px', overflow:'hidden', position:'relative'}}><div style={{width:`${(player!.hp/pStats.maxHp)*100}%`, height:'100%', background:'#00ff66', transition:'0.3s'}}></div><span style={{position:'absolute', inset:0, textAlign:'center', fontSize:'12px', fontWeight:'bold'}}>{player!.hp}</span></div>
+                            <div style={{background:'rgba(0,0,0,0.7)', padding:'5px 15px', borderRadius:'10px', marginTop:'5px', color:'#00eaff', fontWeight:'bold', fontSize:'24px'}}>{player?.name}</div>
                         </div>
                     </div>
                     <div style={{flex:1, background:'rgba(10,10,15,0.95)', borderTop:'4px solid #00eaff', padding:'20px', display:'flex', flexDirection:'column'}}>
@@ -547,7 +593,24 @@ export default function Game() {
                             {player!.mistakes.map((m, i) => (<div key={i} style={{background:'#1a1a20', border:'2px solid #ff0055', padding:'20px', borderRadius:'20px', display:'flex', justifyContent:'space-between', alignItems:'center', color:'white', flexDirection: device==='mobile'?'column':'row', textAlign: device==='mobile'?'center':'left'}}><div style={{marginBottom: device==='mobile'?'10px':'0'}}><div style={{fontSize:'20px', fontWeight:'bold', marginBottom:'5px'}}>{m.q}</div><div style={{fontSize:'18px', color:'#00ff66'}}>Doğru: {m.a}</div></div><button style={{...btnStyle, background:'#ff0055', border:'none'}} onClick={()=>{const np={...player!}; np.mistakes.splice(i,1); saveGame(np);}}>SİL</button></div>))}
                         </div>
                     )}
-                    {screen==='arena' && (<div style={{textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'}}><h2 style={{color:'#ffcc00', fontSize:'40px', marginBottom:'30px'}}>LİDERLİK TABLOSU</h2><div style={{width: device==='mobile'?'100%':'600px', background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', marginBottom:'40px'}}>{arenaBots.map((b,i)=> (<div key={i} style={{display:'flex', justifyContent:'space-between', padding:'15px', borderBottom:'1px solid #333', fontSize:'24px', color: b.n===player!.name ? '#00eaff' : 'white', fontWeight: b.n===player!.name ? 'bold' : 'normal'}}><span>#{i+1} {b.n}</span><span>{b.s} LP</span></div>))}</div>{arenaSearching ? <div style={{fontSize:'40px', color:'#00eaff', animation:'pulse 1s infinite'}}>RAKİP ARANIYOR...</div> : <button style={{...actionBtnStyle, background:'#00ff66', color:'black'}} onClick={findMatch}>RAKİP BUL</button>}</div>)}
+                    {/* GERÇEK LİDERLİK TABLOSU */}
+                    {screen==='arena' && (
+                        <div style={{textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'}}>
+                            <h2 style={{color:'#ffcc00', fontSize:'40px', marginBottom:'30px'}}>LİDERLİK TABLOSU (TOP 50)</h2>
+                            <div style={{width: device==='mobile'?'100%':'600px', background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', marginBottom:'40px', maxHeight:'400px', overflowY:'auto'}}>
+                                {leaderboard.length === 0 ? <div style={{color:'white'}}>Yükleniyor...</div> : leaderboard.map((b,i)=> (
+                                    <div key={i} style={{display:'flex', justifyContent:'space-between', padding:'15px', borderBottom:'1px solid #333', fontSize:'24px', color: b.name===player!.name ? '#00eaff' : 'white', fontWeight: b.name===player!.name ? 'bold' : 'normal'}}>
+                                        <span>#{i+1} {b.name}</span>
+                                        <span>{b.score} LP</span>
+                                    </div>
+                                ))}
+                            </div>
+                            {arenaSearching ? 
+                                <div style={{fontSize:'40px', color:'#00eaff', animation:'pulse 1s infinite'}}>RAKİP ARANIYOR...</div> : 
+                                <button style={{...actionBtnStyle, background:'#00ff66', color:'black'}} onClick={findMatch}>RAKİP BUL</button>
+                            }
+                        </div>
+                    )}
                 </div>
             )}
         </div>
